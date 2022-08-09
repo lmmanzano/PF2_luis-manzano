@@ -1,0 +1,747 @@
+---
+title: "¿Existe Alguna Relación Entre Las Muertes Por Accidentes Automovilísticos Y El Índice De Fragilidad De Estados?"
+author: "Luis Manzano - Juan Cabral - Emiliana Alvarez - Antonio Vitolla - Michel Lehmann"
+date: '2022-07-27'
+output: 
+  html_document:
+    theme: darkly
+  toc: yes
+  toc_depth: 6
+lang: es-ES
+editor_options: 
+  markdown: 
+    wrap: 72
+---
+
+```{r include=FALSE}
+
+
+library(openxlsx)
+library(tidyverse)
+library(readxl)
+library(dplyr)
+library(ggplot2)
+library(patchwork)
+
+dir <- getwd()
+y <- file.path(dir, "R Files/Clase Data science")
+
+
+road <- read_excel("Road_Injuries_America.xls")
+
+#Limpieza
+#_________________________________________________________________
+title <- road[1,]
+
+colnames(road) <- title
+length(road$Country)
+
+road <- road[2:562,-(7:10)]
+
+colnames(road)[colnames(road) == "ISOAlpha3"] <- "ABB"
+
+abb <- road$ABB
+abb <- abb[!is.na(abb)]
+abb <- rep(abb, each = 17)
+
+ctry <- road$Country
+ctry <- ctry[!is.na(ctry)]
+ctry <- rep(ctry, each = 17)
+
+sr <- road$`Subregion name`
+sr <- sr[!is.na(sr)]
+sr <- rep(sr, each = 17)
+
+cs <- road$Cause
+cs <- cs[!is.na(cs)]
+cs <- rep(cs, len=561)
+
+
+road <- road %>% mutate(ABB = abb) %>%
+  mutate(Country = ctry) %>%
+  mutate(`Subregion name` = sr) %>%
+  mutate(Cause = cs)
+
+head(road)
+#___________________________________________________________________________________
+#Arrange 
+
+
+colnames(road)
+
+road$Year <- as.integer(road$Year)
+road$Male <- as.integer(road$Male)
+road$Female <- as.integer(road$Female)
+
+regions <- as.factor(road$`Subregion name`)
+road$`Subregion name` <- regions
+#___________________________________________________________________________________
+#Cambiamos los nombres de los paises y filtramos por los que nos interesan
+
+road[545:561,2] <- rep("Venezuela",each=17)
+road[511:527,2] <- rep("USA",each=17)
+road[69:85,2] <- rep("Bolivia",each=17)
+
+road <- road %>% 
+  filter(Country %in% c("Argentina" ,"Bahamas" ,"Belize","Bolivia","Brazil",
+                        "Barbados","Canada","Chile","Colombia","Costa Rica",
+                        "Cuba" ,"Dominican Republic","Ecuador","Grenada",
+                        "Guatemala","Guyana","Honduras","Haiti","Jamaica",
+                        "Saint Lucia","Mexico","Nicaragua","Panama","Peru","Paraguay",
+                        "El Salvador","Suriname","Uruguay","USA","Venezuela"))
+
+cnames <- c("Argentina" ,"Bahamas" ,"Belize","Bolivia","Brazil",
+            "Barbados","Canada","Chile","Colombia","Costa Rica",
+            "Cuba" ,"Dominican Republic","Ecuador","Grenada",
+            "Guatemala","Guyana","Honduras","Haiti","Jamaica",
+            "Saint Lucia","Mexico","Nicaragua","Panama","Peru","Paraguay",
+            "El Salvador","Suriname","Uruguay","USA","Venezuela")
+
+#___________________________________________________________________
+
+
+
+#___________________________________________________________________
+
+
+
+#___________________________________________________________________
+#Se crea las tablas que extras que vamos a usar para los graficos
+
+road1 <- road
+
+#Le cambiaremos el nombre de la columna Country a region para asi poder unirla con
+#una futura tabla para un grafico del mapa
+
+colnames(road1)[colnames(road1) == "Country"] <- "region"
+
+#Crearemos una tabla con las medias anuales por region
+
+road2 <- road %>% group_by(`Subregion name` , Year) %>%
+  summarise(media_anual_hombres = mean(Male) , 
+            media_anual_mujeres = mean(Female))
+
+#Grafico Mundial
+
+#Debemos crear una nueva tabla con las coordenadas de paises para hacer este grafico
+
+map <- map_data("world")
+
+mapdata <- left_join(map,road1,by = "region")
+
+mapdata <- mapdata %>% filter(!is.na(mapdata$Male))
+
+mapdata1 <- mapdata %>% filter(long <= 0)
+
+mapdata2 <- mapdata1 %>% filter(Year == 2016)
+
+#___________________________________________________________________
+#Saving Data Frames_________________________________________________
+
+write.csv(road, file = "road.csv", row.names = FALSE)
+write.csv(map, file = "map.csv", row.names = FALSE)
+write.csv(road1, file = "road1.csv", row.names = FALSE)
+write.csv(road2, file = "road2.csv", row.names = FALSE)
+write.csv(mapdata2, file = "mapdata2.csv", row.names = FALSE)
+
+save(road, file = "road.RData")
+save(road1, file = "road1.RData")
+save(road2, file = "road2.RData")
+save(map, file = "map.RData")
+save(mapdata2, file = "mapdata2.RData")
+
+#a <- load("~/R Files/Clase Data science/road2.RData")
+
+#road1 <- read.csv("~/R Files/Clase Data science/road1.csv")
+
+#___________________________________________________________________
+#A partir de aca crearemos la nueva tabla que incluya "the fragile state index"
+
+
+#Leemos el archivo
+
+fragile <- read.xlsx("FSI.xlsx", fillMergedCells = TRUE)
+
+#Seleccionamos las columnas y filas que deseamos y cambiamos los nombres
+#a gusto
+
+fragile <- fragile[1:1973,1:20]
+
+title2 <- fragile[1,]
+
+colnames(fragile) <- title2
+
+fragile <- fragile[2:1973,-(2:3)]
+
+colnames(fragile)[colnames(fragile) == "Alternate"] <- "Country"
+
+#Filtramos por la mismos paises de la tabla "road"
+
+cnames <- c("Argentina" ,"Bahamas" ,"Belize","Bolivia","Brazil",
+            "Barbados","Canada","Chile","Colombia","Costa Rica",
+            "Cuba" ,"Dominican Republic","Ecuador","Grenada",
+            "Guatemala","Guyana","Honduras","Haiti","Jamaica",
+            "Saint Lucia","Mexico","Nicaragua","Panama","Peru","Paraguay",
+            "El Salvador","Suriname","Uruguay","USA","Venezuela")
+
+fragile <- fragile %>% filter(Country %in% cnames)
+
+#Usamos la funcion pivot_longer para pasar las columnas a filas
+
+fragile <- fragile %>% pivot_longer(cols=2:18, names_to = "Year", 
+                                          values_to = "index",
+                                          values_drop_na = TRUE)
+
+#Organizamos la tabla del indice por año y pais
+
+fragile <- fragile %>% arrange(Year) %>% arrange(Country)
+
+#Convertimos la columna Year e index en integral
+
+fragile$index <- as.integer(fragile$index)
+fragile$Year <- as.integer(fragile$Year)
+
+#Filtramos por los años que tinen valores ya que hay algunos paises que no 
+#presentan valor en el año 2006. Por lo tanto es necesario filtrar desde el 
+#2007 al 2016 en este caso ya que sino no podremos unir ambas tablas
+
+fragile <- fragile %>% filter(Year %in% c(2007:2016))
+road3 <- road1 %>% filter(Year %in% c(2007:2016)) %>% arrange(region)
+
+#Creamos un vector con los valores de los paises para asi eliminar aquellos 
+#paises que falten para que su union sea efectiva
+
+cnames2 <- unique(fragile$Country)
+cnames3 <- unique(road3$region)
+
+#Filtramos
+
+road3 <- road3 %>% filter(region %in% cnames2)
+
+#Cambiamos el nombre de una columna para unirlos
+
+colnames(road3)[colnames(road3) == "region"] <- "Country"
+
+#Creamos la ultima tabla a utilizar
+  
+road_fragile <- left_join(road3,fragile)
+
+#Creamos una nueva columna la cual nos indicara la variacion porcentual
+#del FSI y los Ratios de Muerte de los hombres por accidente automovilistico
+#Tomando como base el año 2007
+
+road_fragile <- road_fragile %>%
+  group_by(Country) %>% 
+  arrange(Year, .by_group = TRUE) %>%
+  mutate("%Change_Index" = (index/first(index) - 1) * 100)
+
+road_fragile <- road_fragile %>%
+  group_by(Country) %>% 
+  arrange(Year, .by_group = TRUE) %>%
+  mutate("%Change_male" = (Male/first(Male) - 1) * 100)
+
+#___________________________________________________________________
+#___________________________________________________________________
+#Grafico mundial muerte hombres 
+
+mapa_mundial_hombres<-ggplot(mapdata2, aes( x = long, y = lat, group=group)) +
+  geom_polygon(aes(fill = Male), color = "black")
+
+
+#Agregamos mayor personalizacion 
+
+mapa_mundial_hombres <- mapa_mundial_hombres +
+  scale_fill_gradient2(name = "Male Deaths Ratio",
+                                    low="yellow", high="red", mid = "grey", 
+                                    midpoint = 34)+
+  theme_void()+
+  labs(title = "Ratio de Muerte de Hombres por Accidente de Auto en el 2016")
+
+mapa_mundial_hombres
+
+#Grafico muerte Mujeres
+
+mapa_mundial_mujeres <-ggplot(mapdata2, aes( x = long, y = lat, group=group)) +
+  geom_polygon(aes(fill = Female), color = "black")
+
+
+#Agregamos mayor personalizacion 
+
+mapa_mundial_mujeres <- mapa_mundial_mujeres + 
+  scale_fill_gradient2(name = "Female Deaths Ratio",
+                                    low="yellow", high="red", mid = "grey",
+                                    midpoint = 7) +
+  theme_void()+
+  labs(title = "Ratio de Muerte de Mujeres por Accidente de Auto en el 2016")
+
+mapa_mundial_mujeres
+
+#_________________________________________________________________________
+#Graficos
+
+
+#Extra
+unique(road_fragile$`Subregion name`)
+colnames(road_fragile)
+
+#____________________________________________________________________
+#Male plots (region)_________________________________________________
+
+#Plot Media Anual Hombres
+
+plot_MediaAnualH <- road2 %>% ggplot(aes(Year, media_anual_hombres,
+                                         color = `Subregion name`,
+                                         fill = `Subregion name`))+
+  geom_col(position = "dodge" , width = 0.8) + 
+  theme_minimal() +
+  facet_wrap(. ~ `Subregion name`) +
+  labs( y = "Media Muerte Hombres" , title = "Media Anual Muerte Hombres por Region")
+
+plot_MediaAnualH
+
+#Plot Media Anual Mujeres
+
+plot_MediaAnualM <- road2 %>% ggplot(aes(Year, media_anual_mujeres,
+                                         color = `Subregion name`,
+                                         fill = `Subregion name`))+
+  geom_col(position = "dodge" , width = 0.8) +
+  theme_minimal() +
+  facet_wrap(. ~ `Subregion name`) +
+  labs( y = "Media Muerte Mujeres" , title = "Media Anual Muerte Mujeres por Region")
+
+plot_MediaAnualM
+
+#Plot Muertes Hombres Latin caribbean, Andean area, North America
+
+plot_1 <- road %>% filter(Country %in% c("Venezuela","USA", 
+                                                  "Dominican Republic")) %>%
+  ggplot(aes(Year, Male, color = Country, fill = Country)) +
+  geom_col(position = "dodge" , width = 0.8) +
+  theme(legend.position = "bottom") +
+  facet_wrap(. ~ `Subregion name`) +
+  theme_minimal() +
+  labs( y = "Ratio Muerte Hombres" , title = "Ratio Muerte Hombres Por Pais y Region" )
+
+plot_1
+
+#Plot Muertes Hombres Central America
+
+plot_HCA <- road %>% filter(`Subregion name` %in% c("Central America")) %>%
+  filter(Country %in%  c("El Salvador", "Mexico", "Guatemala")) %>%
+  ggplot(aes(Year, Male, color = Country , fill = Country)) +
+  geom_point() +
+  geom_line() +
+  facet_wrap(. ~ `Subregion name`)  +
+  theme_minimal() +
+  labs( y = "Ratio Muerte Hombres" , title = "Ratio Muerte Hombres Por Pais y Region" )
+
+plot_HCA
+
+#Plot Muertes Hombres Non latin caribbean
+
+plot_HNLC <- road %>% filter(Country %in% c("Barbados", "Suriname", 
+                                                     "Saint Lucia")) %>%
+  ggplot(aes(Year, Male, color = Country)) +
+  geom_point() +
+  geom_line() +
+  facet_wrap(. ~ `Subregion name`)  +
+  theme_minimal() +
+  labs( y = "Ratio Muerte Hombres" ,
+        title = "Ratio Muerte Hombres Por Pais y Region" )
+
+plot_HNLC
+
+#Plot Muertes Hombres Southern Cone
+
+plot_HSC <- road %>% filter(Country %in% c("Paraguay", "Chile",
+                                                    "Argentina")) %>%
+  ggplot(aes(Year, Male, color = Country)) +
+  geom_point() +
+  geom_line() +
+  facet_wrap(. ~ `Subregion name`)  +
+  theme_minimal() +
+  labs( y = "Ratio Muerte Hombres" , 
+        title = "Ratio Muerte Hombres Por Pais y Region" ) 
+
+plot_HSC
+
+#Plots Unidos
+
+
+plot_HCA + plot_HNLC +  plot_1 + plot_HSC
+
+
+
+#Southern Cone Male Plot
+
+plotISC <- road_fragile %>% filter(`Subregion name` %in% c("Southern Cone")) %>%
+  ggplot()+
+  geom_line(mapping = aes(Year, `%Change_Index`), col = "blue",lwd=1)+
+  geom_line(mapping = aes(Year, `%Change_male`), col = "red",lwd=1) +
+  facet_wrap(. ~ Country) +
+  theme_minimal() +
+  labs( y = "Variacion Porcentual" , 
+        title = "Relacion FSI y Muertes. Region: Southern Cone" ,
+        caption = "FSI = Blue | Male Death Ratio = Red")
+
+plotISC
+
+#Non Latin Caribbean Male Plot
+
+plotINLC <- road_fragile %>% filter(`Subregion name` %in% c("Non latin caribbean")) %>%
+  ggplot()+
+  geom_line(mapping = aes(Year, `%Change_Index`), col = "blue",lwd=1)+
+  geom_line(mapping = aes(Year, `%Change_male`), col = "red",lwd=1) +
+  facet_wrap(. ~ Country) +
+  theme_minimal() +
+  labs( y = "Variacion Porcentual" , 
+        title = "Relacion FSI y Muertes. Region: Non latin caribbean" ,
+        caption = "FSI = Blue | Male Death Ratio = Red")
+
+plotINLC
+
+#Andean Area Male Plot
+
+plotIAA <- road_fragile %>% filter(`Subregion name` %in% c("Andean area")) %>%
+  ggplot()+
+  geom_line(mapping = aes(Year, `%Change_Index`), col = "blue",lwd=1)+
+  geom_line(mapping = aes(Year, `%Change_male`), col = "red",lwd=1) +
+  facet_wrap(. ~ Country) +
+  theme_minimal() +
+  labs( y = "Variacion Porcentual" , 
+        title = "Relacion FSI y Muertes. Region: Andean area" ,
+        caption = "FSI = Blue | Male Death Ratio = Red")
+
+plotIAA
+
+#Central America  Male Plot
+
+CA_names <- c("Belize","Mexico","El Salvador","Costa Rica",
+              "Panama", "Nicaragua")
+
+plotICA <- road_fragile %>% filter(`Subregion name` %in% c("Central America")) %>%
+  filter(Country %in% CA_names) %>%
+  ggplot()+
+  geom_line(mapping = aes(Year, `%Change_Index`), col = "blue",lwd=1)+
+  geom_line(mapping = aes(Year, `%Change_male`), col = "red", lwd=1) +
+  facet_wrap(. ~ Country) +
+  theme_minimal() +
+  labs( y = "Variacion Porcentual" ,
+        title = "Relacion FSI y Muertes. Region: Central America" ,
+        caption = "FSI = Blue | Male Death Ratio = Red")
+
+plotICA
+
+```
+
+## Introducción
+
+El proyecto por realizar tuvo como finalidad analizar las muertes por
+causa de accidentes automovilísticos en relación del índice de estados
+frágiles, o como se denomina en inglés Fragile State Index. Se tiene la
+idea que pueda existir una relación en que mientras más alto sea el
+índice, es decir mientras el país se considere "frágil" en base a sus
+instituciones nacionales, exista una mayor cantidad de muertes.
+
+Las Interrogantes que se tomarían en cuenta son: 1. ¿Existe una relación
+directa entre el Fragile State Index y la cantidad de muertes de los
+países? 2. ¿Qué ocurrió con la variación porcentual de muerte a causa de
+accidentes automovilísticos si hay una variación negativa con el Fragile
+State Index? 3. ¿Se podría confirmar que los países con bajo índice de
+Fragilidad de Estado son aquellos con menos muertes a causa de
+accidentes automovilísticos?
+
+Para el proyecto se buscó encontrar un patrón en los resultados de
+accidentes de tránsito. Al analizar el tópico a tratar se puede intuir
+que existen al menos dos patrones. El primero siendo que los países con
+mayores accidentes tienen una tendencia a ser países con fragilidad en
+sus instituciones. Al mismo tiempo, algunos de los países con menores
+accidentes de tránsito son aquellos que tenían menor infraestructura y
+desarrollo. A raíz del patrón observado, se tomó interés en evaluar si
+esos patrones influyen o no en los accidentes de tránsito, entendiendo
+que al evaluar Latino América hay variables que van más allá de
+variables políticas que pueda hacer un estado. Por otro lado, se tiene
+que entender que en Latino América actúan variables como el nivel de
+cultural de ingerir alcohol. En ese sentido, el trabajo busca definir si
+estás variables que no se pueden calcular afectan tienen algún impacto o
+tiene un peso más importante a la fragilidad del estado.
+
+## Metodología
+
+-   Paquetes por utilizar son los siguientes:
+
+1.  Library(openxlsx)
+2.  Library(tidyverse)
+3.  Library(readxl)
+4.  Library(dplyr)
+5.  Library(ggplot2)
+
+-   Limpieza de tabla de datos
+
+-   Unión de Ambas Tablas
+
+-   Realización de diferentes cálculos necesarios para un mayor análisis
+
+-   Realización de gráficos para mejor visualización de los datos
+
+-   Análisis de gráficos y diferentes cálculos obtenidos
+
+## Descripción de los Datos
+
+Se ha extraído una tabla de datos de la Organización Panamericana de la
+Salud (OPS). Esta tabla ya se encuentra limpia (limpieza realizada en la
+asignación anterior) y está compuesta por países del continente
+americano, la subregion, el año, y los valores de *"Male"* y *"Female"*,
+los cuales pertenecen a un ratio de muertes por *Road Injury*, es decir,
+cantidad de muertes totales sobre cada 100.000 habitantes.
+
+Por otra parte, estos datos se van a contrastar con otra tabla de datos
+extraída de la página de [Fragile State
+Index](https://fragilestatesindex.org/), la cual estará compuesta por
+los índices de fragilidad de estados entre los años 2006 y 2016. Este
+índice representa al valor total de la suma de diferentes indicadores
+como: Amplia corrupción y comportamiento delictivo, incapacidad para
+recaudar impuestos o recurrir al apoyo de los ciudadanos, etc.
+
+A continuación se presentará el inicio y el fin de la tabla de datos.
+
+```{r}
+head(road_fragile)
+tail(road_fragile)
+road_fragile[,10:11]
+```
+
+Dentro de la tabla se puede observar dos columnas llamadas
+"%Change_Index" y "%Change_male". Las mismas pertenecen a la variación
+porcentual del Ratio de Muertes de Hombres y la variación porcentual del
+índice de fragilidad de los estadosñ cálculos realizados de la siguiente
+manera: ((Valor Observado / Valor Base) - 1) \* 100
+
+Es importante resaltar que el valor base equivale al valor del año 2007
+de cada país, para poder realizar el calculo, se agrupo por estado; de
+ser otra manera el cálculo no hubiese sido correcto. Con estos datos se
+busca mas adelante observar el comportamiento de la variación porcentual
+a lo largo de los años.
+
+## Análisis
+
+### Tabla 1 y 2
+
+```{r}
+mapa_mundial_hombres
+mapa_mundial_mujeres
+```
+
+Los gráficos están en base al ratio de muertes automovilísticas de
+hombre y de mujer, este indicador es igual a las muertes totales por
+accidentes en autos entre cien mil habitantes.
+
+Podemos observar, que gracias al color con el que país este relleno, se
+obtiene cual región o territorio tiene el índice más alto, hay que tomar
+en cuenta que en la gráfica del ratio por muertes automovilísticas, el
+de género masculino va de 0 a 60, y el del género femenino, de 0 a 12,
+significando que indicador de las muertes por accidentes de las mujeres
+es mucho más bajo que el de hombres.
+
+En los gráficos se muestra que la zona de Centroamérica y Norteamérica
+están de color amarillo, esto nos indica que su ratio no es tan elevado,
+en cambio en Suramérica, se encuentra Venezuela, que esta coloreada de
+rojo, significando que es el país que tiene el mayor ratio de muertes
+por accidentes de toda América.
+
+### Tabla 3 y 4
+
+```{r}
+plot_MediaAnualH
+plot_MediaAnualM
+```
+
+En estos gráficos de barras se ven las medias de muerte de hombres y de
+mujeres, por regiones, siendo estas, Área andina, Centroamérica, Caribe
+latino, Caribe no latino, Norteamérica y el cono Sur.
+
+El Área andina registra las medias más altas, de manera creciente,
+seguidas por las gráficas, de Centroamérica y Caribe latino, siendo muy
+parecidas entre si, decrecientes. En el cono Sur también se demuestran
+cifras altas de media crecientes. En Norteamérica las cifras son muy
+constantes y bajas, y en la región Caribe no latina son datos bajos con
+respecto a las primeras cuatro zonas mencionadas y han decrecido desde
+los años dos mil y han seguido constantes.
+
+### Tabla 5
+
+```{r}
+plot_1
+```
+
+#### Venezuela, República Dominicana y Estados Unidos.
+
+Se seleccionaron tres países, cada uno correspondiendo a su nivel de
+ratio y a una región, aquí se intenta lograr una comparación entre tres
+regiones, Venezuela, representando a el Área andina, Estados Unidos
+demostrando la zona Norte de América y República Dominicana
+correspondiendo a los países Caribe latinos.
+
+Aquí se puede observar las diferencias entre los tres países, Venezuela
+se encuentra con un ratio muy elevado, que continúa creciendo al pasar
+de los años, en cambio Estados Unidos, a medida que pasa el tiempo, han
+logrado disminuir este indicador, manteniéndose baja, y Republica
+Dominicana muestra cifras muy cambiantes, es un país muy fluctuante,
+sube en el periodo del año 2000 hasta en 2003, 2004, luego disminuye
+bruscamente hasta el 2010, en donde vuelve a tener un crecimiento, y de
+aquí en adelante se ha mantenido constante en ese valor.
+
+### Tabla 6
+
+```{r}
+plot_HCA
+```
+
+#### Centro América. (México, Guatemala, El Salvador)
+
+Con este gráfico se puede observar el crecimiento y decrecimiento de
+este ratio en México, Guatemala y El Salvador.
+
+México tiene pendiente creciente, con medida que pasa el tiempo, México
+ha dejado que este ratio aumente. Guatemala es un país que su índice se
+ha mantenido relativamente igual, y El Salvador, ha tenido un gran
+decrecimiento, se puede notar como desde el año 2000 han disminuido el
+valor del ratio de una manera rápida y eficiente.
+
+### Tabla 7
+
+```{r}
+plot_HNLC
+```
+
+#### Caribe no latino. (Barbados, Saint Lucia, Surinam)
+
+En este gráfico se aprecia el ratio, a través del tiempo, de los países
+Barbados, Saint Lucia y Surinam.
+
+Barbados es un país isleño el cual muestra cifras fluctuantes pero
+bajas, el territorio de Surinam presenta cifras bastante altas en su
+ratio, y es una cifra un tanto descontrolada con respecto a los años
+2000. Las cifras de Saint Lucia se asemejan a las de Barbados, las
+cifras de la isla son un tanto descontroladas, pero relativamente más
+altas que las de Barbados.
+
+### Tabla 8
+
+```{r}
+plot_HSC
+```
+
+#### Cono sur. (Argentina, Chile, Paraguay)
+
+En el cono sur, específicamente en Argentina, Chile y Paraguay, se
+muestran cifras un tanto interesantes, esto se debe a que Argentina, con
+el pasar del tiempo, con base en el 2000, su índice ha ido en aumento,
+pero sigue teniendo ratios bajos en comparación a otros países, en
+cambio Chile, sus cifras han ido disminuyendo, significando que han
+tenido un mejor control sobre estos sucesos. Paraguay, por otra parte,
+es un país que desde el año 2000 sus ratios han ido en un aumento
+drástico, terminando, para el 2016 con uno de los ratios más altos, no
+solo de la región, sino de todo el continente americano.
+
+### Tabla 9, 10, 11 y 12
+
+```{r}
+
+plotISC 
+plotINLC
+plotIAA
+plotICA
+
+```
+
+### Relación FSI/Muertes
+
+#### Cono Sur (Argentina, Brasil, Chile, Paraguay, Uruguay)
+
+El Cono Sur presenta algunos casos como el de Argentina, Brasil y
+Uruguay en donde el FSI y las muertes se comportan de igual manera.
+Algunas tienen un comportamiento muy similar en el periodo evaluado, en
+algunos otros se comporta de manera similar en algún periodo en
+específico. Sin embargo, Paraguay y Chile tienen un comportamiento
+diferente entre ambas rectas.
+
+#### Caribe no Latino (Bahamas, Barbados, Granada, Guyana, Jamaica, Surinam)
+
+En la región de los países caribeños no latinos, hay escenarios como los
+de Bahamas, Jamaica y Surinam, en los cuales su índice de fragilidad se
+mantiene casi igual, y, sus ratios por muertes de accidentes vehiculares
+varia, porcentualmente, muy poco, en cambio Guyana demuestra también una
+variación muy leve en su FSI (Índice de fragilidad de estado) pero su
+variación porcentual en sus ratios de muerte ha disminuido de manera
+significativa, por otro lado, el país isleño de Barbados tiene un
+aumento elevado en su variación de muertes por accidentes, pero su
+índice de fragilidad de estado se ha mantenido igual a través de los
+años, y por último tenemos a Granada, que es un país con un FSI estable,
+pero su variación porcentual de las muertes disminuye y aumenta con el
+pasar del tiempo.
+
+#### Región Andina (Bolivia, Colombia, Ecuador, Perú, Venezuela)
+
+La tendencia de los países en la región andina en la mayoría de los
+casos se comporta en relación con la variación porcentual del FSI. A
+medida que varía positiva o negativamente el FSI, hay una tendencia de
+la misma forma con un pequeño retraso, aun así tienen una tendencia a
+seguir el comportamiento del FSI. En los países donde no existe está
+relación (Bolivia y Colombia) hay una comportamiento negativo drástico.
+
+#### Centroamérica (Belice, Costa Rica, El Salvador, México, Nicaragua, Panamá)
+
+En el subcontinente centroamericano todos los países tienen variaciones
+porcentuales, de su índice de fragilidad del estado, iguales, se han
+mantenido casi igual con el pasar del tiempo, pero aquí se puede notar
+como en cada uno de ellos este indicador guarda relación con la
+variación porcentual de las muertes por accidentes.
+
+En Belice y El Salvador la variación de su FSI se nota que ha disminuido
+un poco, pero su ratio de muertes, su variación porcentual ha disminuido
+de manera significativa en los últimos años, diciendo que si guardan una
+relación, en Costa Rica, Nicaragua y México, ocurre algo distinto, su
+FSI disminuye un poco, pero el comportamiento porcentual de los ratios
+de muerte aumentan y disminuyen constantemente a través del tiempo, en
+cambio Panamá es un país el cual su índice de fragilidad ha disminuido
+bastante, al igual que su variación de ratios de muerte, lo cual
+demuestra que se relacionan.
+
+## Conclusiones
+
+Un estado frágil es aquel que no tiene la capacidad de brindar bienestar
+en general a gran parte de su población, hace referencia a un desorden
+nacional que reúne elementos que caracteriza una ingobernabilidad, sobre
+todo indica un quiebre a nivel de instituciones. Si existe una relación
+directa entre el índice de fragilidad de los estados y la cantidad de
+muertes a causa de accidentes de automóviles; no obstante, para un
+análisis más completo se deben tomar en cuenta otras variables que no
+son excluyentes de las consideradas para el Índice de Fragilidad por
+Estado. Del mismo modo, cuando el Índice de Fragilidad de los Estados
+disminuye, en algunos casos la variación porcentual de las muertes a
+causa de accidentes de automóvil aumenta. En ese sentido, se evidencia
+la teoría de que si existe una relación directa. Por otro lado, hay
+variables del Índice de Fragilidad de los Estados que si afectan a las
+muertes por dicha causa, sobre todo a nivel instituciones. Sin embargo,
+existen casos en que el índice disminuye, pero también disminuye la
+variación porcentual de las muertes, como es el caso de Perú. Existen
+casos en los que se mantiene igual, no varía. Este planteamiento es
+evidencia de que, en efecto, el Índice de Fragilidad no es la única
+variable que debe ser considerada a la hora de estudiar las causas de
+las muertes por accidentes automovilísticos.
+
+## Consideraciones y Limitaciones
+
+Si bien existe una relación entre el índice de fragilidad de los países
+y las muertes a causa de accidentes de tránsito, no se puede asegurar
+con un 100% de certeza que es la razón única o principal. El trabajo se
+ve limitado ya que existen muchas variables que pueden influir en los
+accidentes automovilísticos. Por tanto, se considera que, para efectos
+de un mejor resultado, se deben tomar en cuenta otras variables para una
+mayor profundidad de análisis. Además, para llegar a una conclusión
+acerca de la relación, es fundamental tomar en cuenta que el contexto de
+cada país es diferente, y si bien existen países que pueden presentar
+similitudes en sus variables, cada uno debe tener un análisis individual
+y es por esto que, un análisis más exhaustivo con otras técnicas de
+Rstudio y más variables es pertinente.
